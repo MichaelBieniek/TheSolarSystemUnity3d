@@ -1,7 +1,9 @@
-﻿using System.Collections;
+﻿using System;
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
+using TMPro;
 
 public class FPScript : MonoBehaviour
 {
@@ -13,13 +15,15 @@ public class FPScript : MonoBehaviour
     private float rotX;
 
     public GameObject sun;
-    public Text distanceToSun;
+    public TextMeshProUGUI distanceToSun;
+    public TextMeshProUGUI rayDetect;
 
     void Update()
     {
         MouseAiming();
         KeyboardMovement();
         CalcDistanceToSun();
+        Trace();
     }
 
     void MouseAiming()
@@ -47,10 +51,33 @@ public class FPScript : MonoBehaviour
 
     void CalcDistanceToSun()
     {
-        var distance = Vector3.Distance(this.transform.position, sun.transform.position);
+        var distance = Vector3.Distance(this.transform.position, sun.transform.position) / Universe.SCALE * Universe.EARTH_DIAMETER;
+        var distanceInMill = Math.Round(distance / 1000000D, 3).ToString("0.000");
+        var distanceInAU = Math.Round(distance / Universe.AU, 3).ToString("0.000");
         if(distanceToSun != null)
         {
-            distanceToSun.text = string.Format("Distance to sun: {0} million km", distance / 10f);
+            distanceToSun.text = string.Format("Distance to sun: {0} million km ({1} AU)", distanceInMill, distanceInAU);
+        }
+    }
+
+    void Trace()
+    {
+        RaycastHit hit;
+        // Does the ray intersect any objects
+        if (Physics.Raycast(transform.position, transform.TransformDirection(Vector3.forward), out hit, Mathf.Infinity))
+        {
+            //Debug.DrawRay(transform.position, transform.TransformDirection(Vector3.forward) * hit.distance, Color.yellow);
+            rayDetect.text = string.Format("{0} - Distance: {1} AU", hit.transform.name, Math.Round(hit.distance * Universe.EARTH_DIAMETER / Universe.SCALE / Universe.AU, 3).ToString("0.000"));
+            var celestialBody = hit.collider.transform.GetComponent<CelestialBody>();
+            if(celestialBody != null)
+            {
+                celestialBody.Dectivate();
+            }
+            
+        }
+        else
+        {
+            rayDetect.text = "";
         }
     }
 }

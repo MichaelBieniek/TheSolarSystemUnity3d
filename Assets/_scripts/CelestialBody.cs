@@ -4,74 +4,118 @@ using UnityEngine;
 
 public class CelestialBody : MonoBehaviour
 {
-    public static float EARTH_DIAMETER = 6371 * 2f;
-    public static double EARTH_MASS = 5.97237E24;
-    public static double AU = 1.496E8;
-    public static double SCALE = 0.1D;
-
+    public Material RaySphereMat;
     public float DiameterInEarths = 1f;
     public float MassInEarths = 1f;
-    public float DistanceFromStarInAu = 1f; 
+    public float DistanceFromStarInAu = 1f;
+    public float InitialVelocityZ = 0f;
+    public float InitialVelocityY = 0f;
+    public float InitialVelocityX = 0f;
 
-    private GameObject _gravField = null;
-    private bool _isRotating = false;
 
 
     private float _distanceNorm = 0;
     private float _diameterNorm = 0;
     private float _massNorm = 0;
 
+    private GameObject _collisionSphere;
+
     private Rigidbody _rb;
-    
+    public Rigidbody rb
+    {
+        get
+        {
+            return this._rb;
+        }
+    }
+
+    public static List<CelestialBody> bodies;
 
     // 1 unit = 1 earth dia
  
     // Start is called before the first frame update
     void Start()
     {
-        _distanceNorm = (float)(SCALE * this.DistanceFromStarInAu * AU / EARTH_DIAMETER);
-        _diameterNorm = (float)(this.DiameterInEarths * EARTH_DIAMETER / 1000);
+        _distanceNorm = (float)(Universe.SCALE * this.DistanceFromStarInAu * Universe.AU / Universe.EARTH_DIAMETER);
+        _diameterNorm = (float)(this.DiameterInEarths);
         Debug.Log(string.Format("Planet: {0} is {1} earths from the sun", this.name, _distanceNorm ));
         this.transform.localScale = new Vector3(_diameterNorm, _diameterNorm, _diameterNorm);
-        this.transform.position = new Vector3(_distanceNorm, 0f, 0f);
+        this.transform.localPosition = new Vector3(_distanceNorm, 0f, 0f);
+        this.transform.localRotation = Quaternion.identity;
         CreateMass();
-        //_gravField = this.CreateGravField();
-        //StartRotation();
+        _collisionSphere = BuildCollisionSphere();
+        Vector3 additiveVelocity = Vector3.zero;
+        if(this.transform.parent != null && this.transform.parent.GetComponent<Rigidbody>() != null)
+        {
+            
+            var rbParent = this.transform.parent.GetComponent<Rigidbody>();
+            additiveVelocity = rbParent.velocity;
+            Debug.Log("Parent vel " + additiveVelocity);
+      
+        }
+        rb.velocity = new Vector3(InitialVelocityX, InitialVelocityY, InitialVelocityZ) + additiveVelocity;
+
     }
 
     // Update is called once per frame
     void Update()
     {
-        if(_isRotating && _gravField != null)
-        {
-            _gravField.transform.Rotate(0f, 0.1f, 0f, Space.World);
-        }
     }
 
-    GameObject CreateGravField()
+    private void FixedUpdate()
     {
-        GameObject sphere = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-        sphere.transform.position = new Vector3(0f, 0f, 0f);
-        sphere.transform.localScale = new Vector3(_distanceNorm, _distanceNorm, _distanceNorm) * 2f;
+        foreach(CelestialBody cb in bodies)
+        {
+            if(cb != this)
+            {
+                Attract(cb);
+            }
+            
+        }
 
-        sphere.AddComponent(typeof(Rigidbody));
-        sphere.transform.GetComponent<Rigidbody>().useGravity = false;
-        sphere.transform.GetComponent<Rigidbody>().isKinematic = true;
-        sphere.name = string.Format("{0}-GravField", this.name);
+    }
 
-        //sphere.AddComponent(typeof(ConstantForce));
+    private void OnEnable()
+    {
+        if(bodies == null)
+        {
+            bodies = new List<CelestialBody>();
+        }
+        bodies.Add(this);
+    }
+
+    private void OnDisable()
+    {
+        bodies.Remove(this);
+    }
+
+    GameObject BuildCollisionSphere()
+    {
+        if (RaySphereMat != null)
+        {
+            GameObject sphere = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+            sphere.transform.parent = this.transform;
+            sphere.transform.localPosition = new Vector3(0f, 0f, 0f);
+            sphere.transform.localScale = Vector3.one * 2f;
+
+            //sphere.AddComponent(typeof(Rigidbody));
+            //sphere.transform.GetComponent<Rigidbody>().useGravity = false;
+            sphere.transform.name = string.Format("RaySphere-{0}", this.name);
+        
+            Renderer meshRenderer = sphere.GetComponent<Renderer>();
+            meshRenderer.material = RaySphereMat;
+            sphere.SetActive(false);
+            return sphere;
+        }
+        return null;
+        //sphere.transform.GetComponent<Rigidbody>().isKinematic = true;
 
 
         // hide mesh
-        Mesh mesh = sphere.GetComponent<MeshFilter>().mesh;
-        mesh.Clear();
-        this.transform.parent = sphere.transform;
-        return sphere;
-    }
+        //Mesh mesh = sphere.GetComponent<MeshFilter>().mesh;
+        //mesh.Clear();
+        //this.transform.parent = sphere.transform;
 
-    void StartRotation()
-    {
-        _isRotating = true;
     }
 
     // create a RigidBody and adds mass based on props
@@ -87,4 +131,27 @@ public class CelestialBody : MonoBehaviour
         rb.useGravity = false;
         _rb = rb;
     }
+
+    void Attract(CelestialBody cb)
+    {
+        Rigidbody rbOther = cb.rb;
+        Vector3 direction = _rb.position - rbOther.position;
+        float distance = direction.magnitude;
+
+        float forceMagnitude = (_rb.mass * rbOther.mass) / Mathf.Pow(distance, 2);
+        Vector3 force = direction.normalized * forceMagnitude;
+
+        rbOther.AddForce(force);
+    }
+
+    public void Dectivate()
+    {
+        if (_collisionSphere != null)
+        {
+            _collisionSphere.SetActive(true);
+            Destroy(_collisionSphere, 3);
+            _collisionSphere = BuildCollisionSphere();
+        }
+    }
+
 }

@@ -1,6 +1,14 @@
-﻿using System.Collections;
+﻿using System;
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+
+public enum TYPE
+{
+    STAR,
+    PLANET,
+    MOON
+}
 
 public class CelestialBody : MonoBehaviour
 {
@@ -8,17 +16,25 @@ public class CelestialBody : MonoBehaviour
     public float DiameterInEarths = 1f;
     public float MassInEarths = 1f;
     public float DistanceFromStarInAu = 1f;
+    public float DayInEarthDays;
+    public float AxialTiltDeg;
+
     public float InitialVelocityZ = 0f;
     public float InitialVelocityY = 0f;
     public float InitialVelocityX = 0f;
+    public TYPE type = TYPE.PLANET;
+    public string Name = "Generic celestial body";
 
-
+    public GameObject[] orbiters;
 
     private float _distanceNorm = 0;
     private float _diameterNorm = 0;
     private float _massNorm = 0;
 
     private GameObject _collisionSphere;
+    private CelestialBody _primaryCb;
+
+    
 
     private Rigidbody _rb;
     public Rigidbody rb
@@ -29,32 +45,29 @@ public class CelestialBody : MonoBehaviour
         }
     }
 
-    public static List<CelestialBody> bodies;
+    private List<CelestialBody> orbitingBodies = new List<CelestialBody>();
+
+    public void Awake()
+    {
+        Debug.Log("Awake: " + this.Name);
+        _distanceNorm = this.DistanceFromStarInAu == 0 ? 0 : (float)(Universe.SCALE * this.DistanceFromStarInAu * Universe.AU / Universe.EARTH_DIAMETER);
+        _diameterNorm = (float)(this.DiameterInEarths);
+
+        ScaleSize();
+        this.transform.localRotation = Quaternion.identity;
+        this.transform.Rotate(0, 0, AxialTiltDeg);
+
+        CreateMass();
+        _collisionSphere = BuildCollisionSphere();
+    }
 
     // 1 unit = 1 earth dia
- 
+
     // Start is called before the first frame update
     void Start()
     {
-        _distanceNorm = (float)(Universe.SCALE * this.DistanceFromStarInAu * Universe.AU / Universe.EARTH_DIAMETER);
-        _diameterNorm = (float)(this.DiameterInEarths);
-        Debug.Log(string.Format("Planet: {0} is {1} earths from the sun", this.name, _distanceNorm ));
-        this.transform.localScale = new Vector3(_diameterNorm, _diameterNorm, _diameterNorm);
-        this.transform.localPosition = new Vector3(_distanceNorm, 0f, 0f);
-        this.transform.localRotation = Quaternion.identity;
-        CreateMass();
-        _collisionSphere = BuildCollisionSphere();
-        Vector3 additiveVelocity = Vector3.zero;
-        if(this.transform.parent != null && this.transform.parent.GetComponent<Rigidbody>() != null)
-        {
-            
-            var rbParent = this.transform.parent.GetComponent<Rigidbody>();
-            additiveVelocity = rbParent.velocity;
-            Debug.Log("Parent vel " + additiveVelocity);
-      
-        }
-        rb.velocity = new Vector3(InitialVelocityX, InitialVelocityY, InitialVelocityZ) + additiveVelocity;
-
+        Debug.Log("Start: " + this.Name);
+        CreateOrbiters();
     }
 
     // Update is called once per frame
@@ -64,7 +77,7 @@ public class CelestialBody : MonoBehaviour
 
     private void FixedUpdate()
     {
-        foreach(CelestialBody cb in bodies)
+        foreach(CelestialBody cb in orbitingBodies)
         {
             if(cb != this)
             {
@@ -73,20 +86,6 @@ public class CelestialBody : MonoBehaviour
             
         }
 
-    }
-
-    private void OnEnable()
-    {
-        if(bodies == null)
-        {
-            bodies = new List<CelestialBody>();
-        }
-        bodies.Add(this);
-    }
-
-    private void OnDisable()
-    {
-        bodies.Remove(this);
     }
 
     GameObject BuildCollisionSphere()
@@ -100,7 +99,7 @@ public class CelestialBody : MonoBehaviour
 
             //sphere.AddComponent(typeof(Rigidbody));
             //sphere.transform.GetComponent<Rigidbody>().useGravity = false;
-            sphere.transform.name = string.Format("RaySphere-{0}", this.name);
+            sphere.transform.name = string.Format("RaySphere-{0}", this.Name);
         
             Renderer meshRenderer = sphere.GetComponent<Renderer>();
             meshRenderer.material = RaySphereMat;
@@ -132,15 +131,40 @@ public class CelestialBody : MonoBehaviour
         _rb = rb;
     }
 
+    // scales planets by defined size * PLANET_SCALE universal constant
+    void ScaleSize()
+    {
+        var scaleToUse = _diameterNorm;
+        if(this.type != TYPE.STAR)
+        {
+            scaleToUse *= Universe.PLANET_SCALE;
+        }
+        this.transform.localScale = new Vector3(scaleToUse, scaleToUse, scaleToUse);
+    }
+
+    // Sets the original velocity of body + current velocity of primary passed as parameter
+    void SetOriginalVelocity(Vector3 primaryVelocity)
+    {
+        if (_rb == null)
+        {
+            Debug.LogError("No rigid body on " + this.Name);
+        }
+        _rb.velocity = new Vector3(InitialVelocityX, InitialVelocityY, InitialVelocityZ) + primaryVelocity;
+    }
+
     void Attract(CelestialBody cb)
     {
         Rigidbody rbOther = cb.rb;
+        if(rbOther == null)
+        {
+            Debug.Log("Orbiting body has no rigidBody: " + cb.transform.name);
+            return;
+        }
+        Debug.Log("attracting: " + cb.transform.name);
         Vector3 direction = _rb.position - rbOther.position;
         float distance = direction.magnitude;
-
         float forceMagnitude = (_rb.mass * rbOther.mass) / Mathf.Pow(distance, 2);
         Vector3 force = direction.normalized * forceMagnitude;
-
         rbOther.AddForce(force);
     }
 
@@ -153,5 +177,72 @@ public class CelestialBody : MonoBehaviour
             _collisionSphere = BuildCollisionSphere();
         }
     }
+
+    void CreateOrbiters()
+    {
+        foreach(GameObject orbiter in orbiters)
+        {
+            var body = orbiter.GetComponent<CelestialBody>();
+            Debug.Log("Creating orbiter: " + body.name);
+            if(body == null)
+            {
+                Debug.LogError("Skipping orbiter");
+                // skip any orbiters that are not celestial bodies
+                continue;
+            }
+            var distance = body.DistanceFromStarInAu == 0 ? 0 : (float)(Universe.SCALE * body.DistanceFromStarInAu * Universe.AU / Universe.EARTH_DIAMETER);
+
+            // set position as distance from "primary" in X + the current position of "primary"
+            var worldPosition = new Vector3(distance, 0, 0);
+            worldPosition += this.transform.position;
+
+            var instance = Instantiate(orbiter, worldPosition, Quaternion.identity);
+            var instanceCb = instance.GetComponent<CelestialBody>();
+            instanceCb.SetPrimary(this);
+            instanceCb.SetOriginalVelocity(this._rb.velocity);
+            AddOrbiters(instanceCb);
+            //instance.transform.SetParent(this.transform, false);
+        }
+    }
+
+    void AddOrbiters(CelestialBody body)
+    {
+        if (orbitingBodies == null)
+        {
+            orbitingBodies = new List<CelestialBody>();
+        }
+        orbitingBodies.Add(body);
+    }
+
+    void SetPrimary(CelestialBody parent)
+    {
+        _primaryCb = parent;
+    } 
+
+    double GetDistanceToCentre()
+    {
+        if(this.type == TYPE.STAR || _primaryCb == null)
+        {
+            return 0D;
+        }
+        var distance = Vector3.Distance(_primaryCb.transform.position, this.transform.position);
+        return distance * Universe.EARTH_DIAMETER / Universe.SCALE / Universe.AU;
+    }
+
+    void OnGUI()
+    {
+        var message = this.Name;
+        message += "\n";
+        message += this.type.ToString();
+
+        if(this.type != TYPE.STAR)
+        {
+            message += "\n";
+            message += string.Format("Distance to centre: {0} AU", Math.Round(GetDistanceToCentre(), 3).ToString("0.00"));
+        }
+        Vector2 worldPoint = Camera.main.WorldToScreenPoint(transform.position);
+        GUI.Label(new Rect(worldPoint.x - 100, (Screen.height - worldPoint.y) - 50, 200, 100), message);
+    }
+
 
 }

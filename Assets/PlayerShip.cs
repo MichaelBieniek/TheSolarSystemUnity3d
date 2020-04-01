@@ -40,7 +40,14 @@ public class PlayerShip : MonoBehaviour
     {
         var x = Input.GetAxis("Horizontal");
         var y = Input.GetAxis("Vertical");
-        Debug.Log(string.Format("x: {0}, y: {1}", x, y));
+        var brake = Input.GetButton("Jump");
+        
+        if(brake)
+        {
+            _rb.drag = 10;
+            return;
+        }
+        _rb.drag = 0;
         if (x != 0 || y != 0)
         {
             _rb.AddRelativeForce(x * thrustForce, 0, y * thrustForce, ForceMode.Force);

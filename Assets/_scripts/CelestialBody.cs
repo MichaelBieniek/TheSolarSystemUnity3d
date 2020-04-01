@@ -30,6 +30,7 @@ public class CelestialBody : MonoBehaviour
     private float _distanceNorm = 0;
     private float _diameterNorm = 0;
     private float _massNorm = 0;
+    private bool _seenByPlayer = false;
 
     private GameObject _collisionSphere;
     private CelestialBody _primaryCb;
@@ -59,6 +60,8 @@ public class CelestialBody : MonoBehaviour
 
         CreateMass();
         _collisionSphere = BuildCollisionSphere();
+
+        
     }
 
     // 1 unit = 1 earth dia
@@ -66,7 +69,7 @@ public class CelestialBody : MonoBehaviour
     // Start is called before the first frame update
     void Start()
     {
-        Debug.Log("Start: " + this.Name);
+        // Debug.Log("Start: " + this.Name);
         CreateOrbiters();
     }
 
@@ -160,7 +163,7 @@ public class CelestialBody : MonoBehaviour
             Debug.Log("Orbiting body has no rigidBody: " + cb.transform.name);
             return;
         }
-        Debug.Log("attracting: " + cb.transform.name);
+        //Debug.Log("attracting: " + cb.transform.name);
         Vector3 direction = _rb.position - rbOther.position;
         float distance = direction.magnitude;
         float forceMagnitude = (_rb.mass * rbOther.mass) / Mathf.Pow(distance, 2);
@@ -229,20 +232,45 @@ public class CelestialBody : MonoBehaviour
         return distance * Universe.EARTH_DIAMETER / Universe.SCALE / Universe.AU;
     }
 
-    void OnGUI()
+    double GetDistanceToCamera()
     {
-        var message = this.Name;
-        message += "\n";
-        message += this.type.ToString();
-
-        if(this.type != TYPE.STAR)
-        {
-            message += "\n";
-            message += string.Format("Distance to centre: {0} AU", Math.Round(GetDistanceToCentre(), 3).ToString("0.00"));
-        }
-        Vector2 worldPoint = Camera.main.WorldToScreenPoint(transform.position);
-        GUI.Label(new Rect(worldPoint.x - 100, (Screen.height - worldPoint.y) - 50, 200, 100), message);
+        var distance = Vector3.Distance(this.transform.position, Camera.main.transform.position);
+        return distance * Universe.EARTH_DIAMETER / Universe.SCALE / Universe.AU;
     }
 
+    void OnGUI()
+    {
+        if(_seenByPlayer)
+        {
+            var message = this.Name;
+            message += "\n";
+            message += this.type.ToString();
+
+            if (this.type != TYPE.STAR)
+            {
+                message += "\n";
+                message += string.Format("Distance to primary: {0} AU", Math.Round(GetDistanceToCentre(), 3).ToString("0.00"));
+            }
+            message += "\n";
+            message += string.Format("Distance: {0} AU", Math.Round(GetDistanceToCamera(), 3).ToString("0.00"));
+            Vector2 worldPoint = Camera.main.WorldToScreenPoint(transform.position);
+            GUI.Label(new Rect(worldPoint.x - 100, (Screen.height - worldPoint.y) - 50, 200, 100), message);
+        }
+        
+    }
+
+    private void OnBecameVisible()
+    {
+        //Debug.Log(Name + " is visible");
+        _seenByPlayer = true;
+    }
+
+    private void OnBecameInvisible()
+    {
+        //Debug.Log(Name + " not visible");
+        _seenByPlayer = false;
+    }
+
+    
 
 }
